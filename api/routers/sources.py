@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, Response
 from loguru import logger
 from surreal_commands import execute_command_sync, submit_command
 
+from api.auth import get_current_user
 from api.command_service import CommandService
 from api.models import (
     AssetModel,
@@ -33,6 +34,7 @@ from open_notebook.config import UPLOADS_FOLDER
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.domain.transformation import Transformation
+from open_notebook.domain.user import User
 from open_notebook.exceptions import InvalidInputError
 
 router = APIRouter()
@@ -160,9 +162,12 @@ async def get_sources(
         "updated", description="Field to sort by (created or updated)"
     ),
     sort_order: str = Query("desc", description="Sort order (asc or desc)"),
+    current_user: dict = Depends(get_current_user),
 ):
     """Get sources with pagination and sorting support."""
     try:
+        owner_id = ensure_record_id(current_user["uid"])
+
         # Validate sort parameters
         if sort_by not in ["created", "updated"]:
             raise HTTPException(
@@ -188,7 +193,7 @@ async def get_sources(
                 SELECT id, asset, created, title, updated, topics, command,
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
-                FROM (select value in from reference where out=$notebook_id)
+                FROM (select value in from reference where out=$notebook_id AND (in.owner = $owner OR in.owner IS NONE))
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command
@@ -197,6 +202,7 @@ async def get_sources(
                 query,
                 {
                     "notebook_id": ensure_record_id(notebook_id),
+                    "owner": owner_id,
                     "limit": limit,
                     "offset": offset,
                 },
@@ -208,11 +214,12 @@ async def get_sources(
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM source
+                WHERE owner = $owner OR owner IS NONE
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command
             """
-            result = await repo_query(query, {"limit": limit, "offset": offset})
+            result = await repo_query(query, {"owner": owner_id, "limit": limit, "offset": offset})
 
         # Convert result to response model
         # Command data is already fetched via FETCH command clause
@@ -282,6 +289,7 @@ async def create_source(
     form_data: tuple[SourceCreate, Optional[UploadFile]] = Depends(
         parse_source_form_data
     ),
+    current_user: dict = Depends(get_current_user),
 ):
     """Create a new source with support for both JSON and multipart form data."""
     source_data, upload_file = form_data
@@ -290,6 +298,15 @@ async def create_source(
     file_path = None
 
     try:
+        # Quota check for file-type sources
+        user = await User.get_by_user_id(current_user.get("user_id", ""))
+        if user:
+            if not user.is_quota_files_ok():
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"File quota exceeded (limit: {user.quota_files} files).",
+                )
+
         # Verify all specified notebooks exist (backward compatibility support)
         for notebook_id in source_data.notebooks or []:
             notebook = await Notebook.get(notebook_id)
@@ -300,6 +317,13 @@ async def create_source(
 
         # Handle file upload if provided
         if upload_file and source_data.type == "upload":
+            # Check bytes quota if file size is available
+            if user and upload_file.size:
+                if not user.is_quota_bytes_ok(upload_file.size):
+                    raise HTTPException(
+                        status_code=429,
+                        detail=f"Storage quota exceeded (limit: {user.quota_bytes // (1024*1024*1024)} GB).",
+                    )
             try:
                 file_path = await save_uploaded_file(upload_file)
             except Exception as e:
@@ -357,6 +381,7 @@ async def create_source(
             source = Source(
                 title=source_data.title or "Processing...",
                 topics=[],
+                owner=current_user.get("uid"),
             )
             await source.save()
 
@@ -436,6 +461,7 @@ async def create_source(
                 source = Source(
                     title=source_data.title or "Processing...",
                     topics=[],
+                    owner=current_user.get("uid"),
                 )
                 await source.save()
 
@@ -918,7 +944,10 @@ async def retry_source_processing(source_id: str):
 
 
 @router.delete("/sources/{source_id}")
-async def delete_source(source_id: str):
+async def delete_source(
+    source_id: str,
+    current_user: dict = Depends(get_current_user),
+):
     """Delete a source."""
     try:
         source = await Source.get(source_id)

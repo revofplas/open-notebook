@@ -1,10 +1,11 @@
 import json
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
+from api.auth import get_current_user
 from api.models import AskRequest, AskResponse, SearchRequest, SearchResponse
 from open_notebook.ai.models import Model, model_manager
 from open_notebook.domain.notebook import text_search, vector_search
@@ -15,11 +16,14 @@ router = APIRouter()
 
 
 @router.post("/search", response_model=SearchResponse)
-async def search_knowledge_base(search_request: SearchRequest):
+async def search_knowledge_base(
+    search_request: SearchRequest,
+    current_user: dict = Depends(get_current_user),
+):
     """Search the knowledge base using text or vector search."""
+    owner_id = current_user.get("uid")
     try:
         if search_request.type == "vector":
-            # Check if embedding model is available for vector search
             if not await model_manager.get_embedding_model():
                 raise HTTPException(
                     status_code=400,
@@ -32,14 +36,15 @@ async def search_knowledge_base(search_request: SearchRequest):
                 source=search_request.search_sources,
                 note=search_request.search_notes,
                 minimum_score=search_request.minimum_score,
+                owner_id=owner_id,
             )
         else:
-            # Text search
             results = await text_search(
                 keyword=search_request.query,
                 results=search_request.limit,
                 source=search_request.search_sources,
                 note=search_request.search_notes,
+                owner_id=owner_id,
             )
 
         return SearchResponse(

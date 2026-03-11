@@ -18,6 +18,7 @@ class Notebook(ObjectModel):
     name: str
     description: str
     archived: Optional[bool] = False
+    owner: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -293,6 +294,7 @@ class Source(ObjectModel):
     title: Optional[str] = None
     topics: Optional[List[str]] = Field(default_factory=list)
     full_text: Optional[str] = None
+    owner: Optional[str] = None
     command: Optional[Union[str, RecordID]] = Field(
         default=None, description="Link to surreal-commands processing job"
     )
@@ -559,6 +561,7 @@ class Note(ObjectModel):
     title: Optional[str] = None
     note_type: Optional[Literal["human", "ai"]] = None
     content: Optional[str] = None
+    owner: Optional[str] = None
 
     @field_validator("content")
     @classmethod
@@ -628,7 +631,11 @@ class ChatSession(ObjectModel):
 
 
 async def text_search(
-    keyword: str, results: int, source: bool = True, note: bool = True
+    keyword: str,
+    results: int,
+    source: bool = True,
+    note: bool = True,
+    owner_id: Optional[str] = None,
 ):
     if not keyword:
         raise InvalidInputError("Search keyword cannot be empty")
@@ -640,6 +647,8 @@ async def text_search(
             """,
             {"keyword": keyword, "results": results, "source": source, "note": note},
         )
+        if owner_id:
+            search_results = await _filter_by_owner(search_results, owner_id)
         return search_results
     except Exception as e:
         logger.error(f"Error performing text search: {str(e)}")
@@ -653,13 +662,13 @@ async def vector_search(
     source: bool = True,
     note: bool = True,
     minimum_score=0.2,
+    owner_id: Optional[str] = None,
 ):
     if not keyword:
         raise InvalidInputError("Search keyword cannot be empty")
     try:
         from open_notebook.utils.embedding import generate_embedding
 
-        # Use unified embedding function (handles chunking if query is very long)
         embed = await generate_embedding(keyword)
         search_results = await repo_query(
             """
@@ -673,8 +682,32 @@ async def vector_search(
                 "minimum_score": minimum_score,
             },
         )
+        if owner_id:
+            search_results = await _filter_by_owner(search_results, owner_id)
         return search_results
     except Exception as e:
         logger.error(f"Error performing vector search: {str(e)}")
         logger.exception(e)
         raise DatabaseOperationError(e)
+
+
+async def _filter_by_owner(results: list, owner_id: str) -> list:
+    """검색 결과를 owner 기준으로 필터링합니다. owner가 없는 기존 항목은 포함합니다."""
+    if not results:
+        return results
+    filtered = []
+    for item in results:
+        item_id = str(item.get("item_id", ""))
+        if not item_id:
+            continue
+        try:
+            row = await repo_query(
+                "SELECT owner FROM $id", {"id": ensure_record_id(item_id)}
+            )
+            if row:
+                item_owner = row[0].get("owner")
+                if item_owner is None or str(item_owner) == owner_id:
+                    filtered.append(item)
+        except Exception:
+            filtered.append(item)  # 오류 시 포함 처리
+    return filtered
