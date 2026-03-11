@@ -1,0 +1,85 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    # 매일 오전 9시 (KST = UTC+9, so 00:00 UTC)
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      merge_strategy:
+        description: 'Merge strategy (merge or rebase)'
+        required: false
+        default: 'merge'
+
+jobs:
+  sync:
+    name: Sync upstream → origin/main
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout fork (main)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/lfnovo/open-notebook.git
+
+      - name: Fetch upstream
+        run: git fetch upstream
+
+      - name: Check for new upstream commits
+        id: check
+        run: |
+          UPSTREAM_COMMITS=$(git rev-list HEAD..upstream/main --count)
+          echo "new_commits=$UPSTREAM_COMMITS" >> $GITHUB_OUTPUT
+          echo "Upstream has $UPSTREAM_COMMITS new commits"
+
+      - name: Merge upstream into main (no conflict)
+        if: steps.check.outputs.new_commits != '0'
+        run: |
+          git merge upstream/main --no-edit -m "chore: sync upstream lfnovo/open-notebook"
+          git push origin main
+        continue-on-error: true
+        id: merge
+
+      - name: Create PR if merge had conflicts
+        if: steps.merge.outcome == 'failure' && steps.check.outputs.new_commits != '0'
+        run: |
+          BRANCH="sync/upstream-$(date +%Y%m%d%H%M%S)"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: sync upstream $(date +%Y-%m-%d)" \
+            --body "$(cat <<'EOF'
+          ## Upstream Sync
+
+          This PR syncs changes from [lfnovo/open-notebook](https://github.com/lfnovo/open-notebook) upstream.
+
+          **Action required**: Resolve merge conflicts before merging.
+
+          After merging this PR into `main`, also merge `main` into `custom/main`:
+          ```bash
+          git checkout custom/main
+          git merge main
+          ```
+          EOF
+          )" \
+            --base main \
+            --head "$BRANCH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: No new upstream commits
+        if: steps.check.outputs.new_commits == '0'
+        run: echo "Already up to date with upstream."
