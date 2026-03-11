@@ -1,0 +1,21 @@
+-- Migration 17: Oracle HR DB configuration table
+DEFINE TABLE oracle_config SCHEMAFULL
+  PERMISSIONS
+    FOR select, create, update WHERE $auth.role = 'admin'
+    FOR delete NONE;
+
+DEFINE FIELD dsn ON oracle_config TYPE string;
+DEFINE FIELD username ON oracle_config TYPE string;
+DEFINE FIELD password ON oracle_config TYPE option<string>;
+DEFINE FIELD pool_min ON oracle_config TYPE int DEFAULT 2;
+DEFINE FIELD pool_max ON oracle_config TYPE int DEFAULT 10;
+DEFINE FIELD enabled ON oracle_config TYPE bool DEFAULT true;
+DEFINE FIELD updated ON oracle_config TYPE datetime VALUE time::now();
+
+-- Insert default config record (singleton pattern)
+UPSERT oracle_config:default SET
+  dsn = '',
+  username = '',
+  pool_min = 2,
+  pool_max = 10,
+  enabled = false;

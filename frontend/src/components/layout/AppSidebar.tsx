@@ -8,6 +8,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/hooks/use-auth'
+import { useAuthStore } from '@/lib/stores/auth-store'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import {
@@ -41,6 +42,7 @@ import {
   Plus,
   Wrench,
   Command,
+  ShieldCheck,
 } from 'lucide-react'
 
 const getNavigation = (t: TranslationKeys) => [
@@ -82,6 +84,8 @@ export function AppSidebar() {
   const pathname = usePathname()
   const { logout } = useAuth()
   const { isCollapsed, toggleCollapse } = useSidebarStore()
+  const { user } = useAuthStore()
+  const isAdmin = user?.role === 'admin'
   const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
 
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
@@ -290,6 +294,52 @@ export function AppSidebar() {
               </div>
             </div>
           ))}
+
+          {/* Admin section — visible only to admins */}
+          {isAdmin && (
+            <div>
+              <Separator className="my-3" />
+              <div className="space-y-1">
+                {!isCollapsed && (
+                  <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/60">
+                    {t.navigation.admin}
+                  </h3>
+                )}
+                {isCollapsed ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Link href="/admin/oracle-settings">
+                        <Button
+                          variant={pathname?.startsWith('/admin/oracle-settings') ? 'secondary' : 'ghost'}
+                          className={cn(
+                            'w-full gap-3 text-sidebar-foreground sidebar-menu-item',
+                            pathname?.startsWith('/admin/oracle-settings') && 'bg-sidebar-accent text-sidebar-accent-foreground',
+                            'justify-center px-2'
+                          )}
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{t.navigation.oracleSettings}</TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Link href="/admin/oracle-settings">
+                    <Button
+                      variant={pathname?.startsWith('/admin/oracle-settings') ? 'secondary' : 'ghost'}
+                      className={cn(
+                        'w-full gap-3 text-sidebar-foreground sidebar-menu-item justify-start',
+                        pathname?.startsWith('/admin/oracle-settings') && 'bg-sidebar-accent text-sidebar-accent-foreground',
+                      )}
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>{t.navigation.oracleSettings}</span>
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
         </nav>
 
         <div

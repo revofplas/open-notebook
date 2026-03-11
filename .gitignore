@@ -139,3 +139,5 @@ specs/
 
 *.local.yml
 **/*.local.md
+/.agents/
+/skills-lock.json

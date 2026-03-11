@@ -1,0 +1,2 @@
+-- Migration 17 rollback: Remove Oracle HR DB configuration table
+REMOVE TABLE oracle_config;
