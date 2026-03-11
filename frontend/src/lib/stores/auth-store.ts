@@ -2,9 +2,18 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { getApiUrl } from '@/lib/config'
 
+interface UserInfo {
+  uid: string
+  user_id: string
+  emp_no: string
+  emp_nm: string
+  role: string
+}
+
 interface AuthState {
   isAuthenticated: boolean
   token: string | null
+  user: UserInfo | null
   isLoading: boolean
   error: string | null
   lastAuthCheck: number | null
@@ -13,7 +22,7 @@ interface AuthState {
   authRequired: boolean | null
   setHasHydrated: (state: boolean) => void
   checkAuthRequired: () => Promise<boolean>
-  login: (password: string) => Promise<boolean>
+  login: (userId: string, password: string) => Promise<boolean>
   logout: () => void
   checkAuth: () => Promise<boolean>
 }
@@ -23,6 +32,7 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       isAuthenticated: false,
       token: null,
+      user: null,
       isLoading: false,
       error: null,
       lastAuthCheck: null,
@@ -58,110 +68,127 @@ export const useAuthStore = create<AuthState>()(
         } catch (error) {
           console.error('Failed to check auth status:', error)
 
-          // If it's a network error, set a more helpful error message
           if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
             set({
               error: 'Unable to connect to server. Please check if the API is running.',
-              authRequired: null  // Don't assume auth is required if we can't connect
+              authRequired: null
             })
           } else {
-            // For other errors, default to requiring auth to be safe
             set({ authRequired: true })
           }
 
-          // Re-throw the error so the UI can handle it
           throw error
         }
       },
 
-      login: async (password: string) => {
+      login: async (userId: string, password: string) => {
         set({ isLoading: true, error: null })
         try {
           const apiUrl = await getApiUrl()
 
-          // Test auth with notebooks endpoint
-          const response = await fetch(`${apiUrl}/api/notebooks`, {
-            method: 'GET',
+          const response = await fetch(`${apiUrl}/api/auth/login`, {
+            method: 'POST',
             headers: {
-              'Authorization': `Bearer ${password}`,
-              'Content-Type': 'application/json'
-            }
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ user_id: userId, password }),
           })
-          
+
           if (response.ok) {
-            set({ 
-              isAuthenticated: true, 
-              token: password, 
+            const data = await response.json()
+            set({
+              isAuthenticated: true,
+              token: data.access_token,
+              user: {
+                uid: data.user.uid,
+                user_id: data.user.user_id,
+                emp_no: data.user.emp_no,
+                emp_nm: data.user.emp_nm,
+                role: data.user.role,
+              },
               isLoading: false,
               lastAuthCheck: Date.now(),
-              error: null
+              error: null,
             })
             return true
           } else {
-            let errorMessage = 'Authentication failed'
-            if (response.status === 401) {
-              errorMessage = 'Invalid password. Please try again.'
-            } else if (response.status === 403) {
-              errorMessage = 'Access denied. Please check your credentials.'
-            } else if (response.status >= 500) {
-              errorMessage = 'Server error. Please try again later.'
-            } else {
-              errorMessage = `Authentication failed (${response.status})`
+            let errorMessage = '로그인에 실패했습니다'
+            try {
+              const errData = await response.json()
+              errorMessage = errData.detail || errorMessage
+            } catch {
+              // ignore JSON parse error
             }
-            
-            set({ 
+            if (response.status === 401) {
+              errorMessage = '사용자 ID 또는 비밀번호가 올바르지 않습니다.'
+            } else if (response.status === 403) {
+              errorMessage = '접근이 거부되었습니다. 자격 증명을 확인하세요.'
+            } else if (response.status >= 500) {
+              errorMessage = '서버 오류입니다. 나중에 다시 시도하세요.'
+            }
+
+            set({
               error: errorMessage,
               isLoading: false,
               isAuthenticated: false,
-              token: null
+              token: null,
+              user: null,
             })
             return false
           }
         } catch (error) {
           console.error('Network error during auth:', error)
-          let errorMessage = 'Authentication failed'
-          
+          let errorMessage = '로그인에 실패했습니다'
+
           if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-            errorMessage = 'Unable to connect to server. Please check if the API is running.'
+            errorMessage = '서버에 연결할 수 없습니다. API가 실행 중인지 확인하세요.'
           } else if (error instanceof Error) {
-            errorMessage = `Network error: ${error.message}`
-          } else {
-            errorMessage = 'An unexpected error occurred during authentication'
+            errorMessage = `네트워크 오류: ${error.message}`
           }
-          
-          set({ 
+
+          set({
             error: errorMessage,
             isLoading: false,
             isAuthenticated: false,
-            token: null
+            token: null,
+            user: null,
           })
           return false
         }
       },
-      
+
       logout: () => {
-        set({ 
-          isAuthenticated: false, 
-          token: null, 
-          error: null 
+        const { token } = get()
+        // Fire-and-forget audit log
+        if (token && token !== 'not-required') {
+          getApiUrl().then(apiUrl => {
+            fetch(`${apiUrl}/api/auth/logout`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` },
+            }).catch(() => { /* ignore */ })
+          }).catch(() => { /* ignore */ })
+        }
+        set({
+          isAuthenticated: false,
+          token: null,
+          user: null,
+          error: null,
         })
       },
-      
+
       checkAuth: async () => {
         const state = get()
         const { token, lastAuthCheck, isCheckingAuth, isAuthenticated } = state
 
-        // If already checking, return current auth state
         if (isCheckingAuth) {
           return isAuthenticated
         }
 
-        // If no token, not authenticated
         if (!token) {
           return false
         }
 
-        // If we checked recently (within 30 seconds) and are authenticated, skip
+        // Skip check for 30 seconds if recently authenticated
         const now = Date.now()
         if (isAuthenticated && lastAuthCheck && (now - lastAuthCheck) < 30000) {
           return true
@@ -172,37 +199,47 @@ export const useAuthStore = create<AuthState>()(
         try {
           const apiUrl = await getApiUrl()
 
-          const response = await fetch(`${apiUrl}/api/notebooks`, {
+          const response = await fetch(`${apiUrl}/api/auth/me`, {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
+              'Content-Type': 'application/json',
+            },
           })
-          
+
           if (response.ok) {
-            set({ 
-              isAuthenticated: true, 
+            const userData = await response.json()
+            set({
+              isAuthenticated: true,
+              user: {
+                uid: userData.uid,
+                user_id: userData.user_id,
+                emp_no: userData.emp_no,
+                emp_nm: userData.emp_nm,
+                role: userData.role,
+              },
               lastAuthCheck: now,
-              isCheckingAuth: false 
+              isCheckingAuth: false,
             })
             return true
           } else {
             set({
               isAuthenticated: false,
               token: null,
+              user: null,
               lastAuthCheck: null,
-              isCheckingAuth: false
+              isCheckingAuth: false,
             })
             return false
           }
         } catch (error) {
           console.error('checkAuth error:', error)
-          set({ 
-            isAuthenticated: false, 
+          set({
+            isAuthenticated: false,
             token: null,
+            user: null,
             lastAuthCheck: null,
-            isCheckingAuth: false 
+            isCheckingAuth: false,
           })
           return false
         }
@@ -212,7 +249,8 @@ export const useAuthStore = create<AuthState>()(
       name: 'auth-storage',
       partialize: (state) => ({
         token: state.token,
-        isAuthenticated: state.isAuthenticated
+        isAuthenticated: state.isAuthenticated,
+        user: state.user,
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true)
