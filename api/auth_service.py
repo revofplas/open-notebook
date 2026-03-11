@@ -56,22 +56,30 @@ def decode_access_token(token: str) -> Optional[dict]:
 
 def verify_oracle_password(plain_password: str, stored_hash: str) -> bool:
     """
-    Oracle HR 저장 비밀번호(PWD 컬럼)와 입력값을 비교합니다.
+    Oracle HR 저장 비밀번호(INF.VI_INF_EMP_INFO.PWD)와 입력값을 비교합니다.
 
-    TODO: 커스텀 SHA-512 알고리즘 구현 필요.
-    Oracle HR 팀으로부터 알고리즘 상세 수령 후 이 함수를 완성하세요.
-
-    구현 예시 (단순 SHA-512):
-        import hashlib
-        hashed = hashlib.sha512(plain_password.encode()).hexdigest()
-        return hashed.upper() == stored_hash.upper()
-
-    실제 알고리즘에 salt, 반복 횟수, 인코딩 방식이 다를 수 있습니다.
+    알고리즘 (docs/99-KIMM-CUSTOMIZATION/ORACLE_PASSWD_VERIFICATION.md 참조):
+      1. 입력 비밀번호를 SHA-512 해싱 후 Base64 인코딩
+      2. DB 저장값의 선행 특수문자(^,`) 제거
+      3. DB 저장값의 문자 치환: ] → /  ,  [ → +
+      4. 두 값 비교
     """
-    raise NotImplementedError(
-        "Oracle HR 비밀번호 검증 미구현. "
-        "api/auth_service.py의 verify_oracle_password()를 완성해주세요."
-    )
+    import base64
+    import hashlib
+
+    # Step 1: SHA-512 → Base64
+    digest = hashlib.sha512(plain_password.encode("utf-8")).digest()
+    user_hash = base64.b64encode(digest).decode("utf-8")
+
+    # Step 2: 선행 특수문자 제거
+    processed = stored_hash.lstrip("^,`")
+
+    # Step 3: 문자 치환 (순서 중요: ] 먼저, 그 다음 [)
+    processed = processed.replace("]", "/")
+    processed = processed.replace("[", "+")
+
+    # Step 4: 비교
+    return user_hash == processed
 
 
 # ── Main authentication entry point ───────────────────────────────────────────
@@ -105,12 +113,9 @@ async def authenticate_user(user_id: str, password: str) -> Optional[User]:
         logger.warning(f"Oracle HR: user not found or inactive — user_id={user_id}")
         return None
 
-    try:
-        if not verify_oracle_password(password, emp["PWD"]):
-            logger.warning(f"Oracle HR: password mismatch — user_id={user_id}")
-            return None
-    except NotImplementedError:
-        raise
+    if not verify_oracle_password(password, emp["PWD"]):
+        logger.warning(f"Oracle HR: password mismatch — user_id={user_id}")
+        return None
 
     # 3. SurrealDB에 사용자 upsert (최초 로그인 시 자동 생성)
     user = await _upsert_oracle_user(emp)

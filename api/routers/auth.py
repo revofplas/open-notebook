@@ -50,11 +50,6 @@ async def login(body: LoginRequest, request: Request):
     """
     try:
         user = await authenticate_user(body.user_id, body.password)
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=503,
-            detail="비밀번호 검증 모듈이 아직 구현되지 않았습니다. 관리자에게 문의하세요.",
-        )
     except Exception as e:
         logger.error(f"Login error for user_id={body.user_id}: {e}")
         raise HTTPException(status_code=503, detail="인증 서비스 오류가 발생했습니다.")
