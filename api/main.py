@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -11,7 +12,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from api.auth import PasswordAuthMiddleware
+from api.auth import JWTAuthMiddleware
 from open_notebook.exceptions import (
     AuthenticationError,
     ConfigurationError,
@@ -48,6 +49,36 @@ from api.routers import commands as commands_router
 from open_notebook.database.async_migrate import AsyncMigrationManager
 from open_notebook.utils.encryption import get_secret_from_env
 
+
+async def _bootstrap_admin() -> None:
+    """
+    환경변수 ADMIN_BOOTSTRAP_ID / ADMIN_BOOTSTRAP_PASSWORD 가 설정된 경우
+    시스템 관리자 계정을 최초 1회 자동 생성합니다.
+    이미 존재하는 계정은 건너뜁니다.
+    """
+    admin_id = os.getenv("ADMIN_BOOTSTRAP_ID")
+    admin_pw = os.getenv("ADMIN_BOOTSTRAP_PASSWORD")
+    if not admin_id or not admin_pw:
+        return
+
+    try:
+        from open_notebook.domain.user import User
+        existing = await User.get_by_user_id(admin_id)
+        if existing:
+            logger.debug(f"Bootstrap admin already exists: {admin_id}")
+            return
+
+        from api.auth_service import create_system_admin
+        await create_system_admin(
+            user_id=admin_id,
+            emp_no=admin_id,
+            emp_nm="시스템 관리자",
+            plain_password=admin_pw,
+        )
+        logger.success(f"Bootstrap admin account created: {admin_id}")
+    except Exception as e:
+        logger.warning(f"Bootstrap admin creation failed (non-fatal): {e}")
+
 # Import commands to register them in the API process
 try:
     logger.info("Commands imported in API process")
@@ -61,12 +92,9 @@ async def lifespan(app: FastAPI):
     Lifespan event handler for the FastAPI application.
     Runs database migrations automatically on startup.
     """
-    import os
-
     # Startup: Security checks
     logger.info("Starting API initialization...")
 
-    # Security check: Encryption key
     if not get_secret_from_env("OPEN_NOTEBOOK_ENCRYPTION_KEY"):
         logger.warning(
             "OPEN_NOTEBOOK_ENCRYPTION_KEY not set. "
@@ -107,12 +135,20 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Podcast profile migration encountered errors: {e}")
         # Non-fatal: profiles can be migrated manually via UI
 
+    # Bootstrap system admin account if configured
+    await _bootstrap_admin()
+
     logger.success("API initialization completed successfully")
 
     # Yield control to the application
     yield
 
-    # Shutdown: cleanup if needed
+    # Shutdown: close Oracle connection pool
+    try:
+        from api.oracle_client import close_pool
+        await close_pool()
+    except Exception:
+        pass
     logger.info("API shutdown complete")
 
 
@@ -122,20 +158,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add password authentication middleware first
-# Exclude /api/auth/status and /api/config from authentication
-app.add_middleware(
-    PasswordAuthMiddleware,
-    excluded_paths=[
-        "/",
-        "/health",
-        "/docs",
-        "/openapi.json",
-        "/redoc",
-        "/api/auth/status",
-        "/api/config",
-    ],
-)
+# JWT authentication middleware
+app.add_middleware(JWTAuthMiddleware)
 
 # Add CORS middleware last (so it processes first)
 app.add_middleware(

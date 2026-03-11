@@ -1,0 +1,35 @@
+-- Migration 15: User accounts and audit log
+
+DEFINE TABLE IF NOT EXISTS user SCHEMAFULL;
+DEFINE FIELD IF NOT EXISTS emp_no      ON user TYPE string;
+DEFINE FIELD IF NOT EXISTS user_id     ON user TYPE string;
+DEFINE FIELD IF NOT EXISTS emp_nm      ON user TYPE string;
+DEFINE FIELD IF NOT EXISTS email       ON user TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS dept_cd     ON user TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS dept_nm     ON user TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS grd_nm      ON user TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS job_tp_nm   ON user TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS role        ON user TYPE string DEFAULT 'member';
+DEFINE FIELD IF NOT EXISTS source      ON user TYPE string DEFAULT 'oracle';
+DEFINE FIELD IF NOT EXISTS hashed_pw   ON user TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS is_active   ON user TYPE bool DEFAULT true;
+DEFINE FIELD IF NOT EXISTS quota_files ON user TYPE int DEFAULT 100;
+DEFINE FIELD IF NOT EXISTS quota_bytes ON user TYPE int DEFAULT 1073741824;
+DEFINE FIELD IF NOT EXISTS used_files  ON user TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS used_bytes  ON user TYPE int DEFAULT 0;
+DEFINE FIELD IF NOT EXISTS last_login  ON user TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS created     ON user DEFAULT time::now() VALUE $before OR time::now();
+DEFINE FIELD IF NOT EXISTS updated     ON user DEFAULT time::now() VALUE time::now();
+DEFINE INDEX IF NOT EXISTS idx_user_user_id ON user FIELDS user_id UNIQUE;
+DEFINE INDEX IF NOT EXISTS idx_user_emp_no  ON user FIELDS emp_no  UNIQUE;
+
+-- Audit log table (SCHEMALESS to allow flexible meta field)
+DEFINE TABLE IF NOT EXISTS audit_log SCHEMALESS;
+DEFINE FIELD IF NOT EXISTS user_id  ON audit_log TYPE record<user>;
+DEFINE FIELD IF NOT EXISTS action   ON audit_log TYPE string;
+DEFINE FIELD IF NOT EXISTS resource ON audit_log TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS meta     ON audit_log TYPE option<object>;
+DEFINE FIELD IF NOT EXISTS ip       ON audit_log TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS ts       ON audit_log TYPE datetime DEFAULT time::now();
+DEFINE INDEX IF NOT EXISTS idx_audit_user ON audit_log FIELDS user_id;
+DEFINE INDEX IF NOT EXISTS idx_audit_ts   ON audit_log FIELDS ts;

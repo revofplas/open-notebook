@@ -8,6 +8,83 @@ from starlette.responses import JSONResponse
 
 from open_notebook.utils.encryption import get_secret_from_env
 
+# ── JWT Auth Middleware ────────────────────────────────────────────────────────
+
+_JWT_EXCLUDED_PATHS = {
+    "/",
+    "/health",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+    "/api/auth/login",
+    "/api/auth/status",
+    "/api/config",
+}
+
+
+class JWTAuthMiddleware(BaseHTTPMiddleware):
+    """
+    JWT 기반 인증 미들웨어.
+    Authorization: Bearer <jwt_token> 헤더를 검증하고
+    request.state.user 에 페이로드를 주입합니다.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
+        if request.url.path in _JWT_EXCLUDED_PATHS:
+            return await call_next(request)
+
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Missing authorization header"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        try:
+            scheme, token = auth_header.split(" ", 1)
+            if scheme.lower() != "bearer":
+                raise ValueError
+        except ValueError:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid authorization header format"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        from api.auth_service import decode_access_token
+
+        payload = decode_access_token(token)
+        if not payload:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid or expired token"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        request.state.user = payload
+        return await call_next(request)
+
+
+# ── FastAPI dependencies ───────────────────────────────────────────────────────
+
+def get_current_user(request: Request) -> dict:
+    """현재 인증된 사용자 페이로드를 반환합니다."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
+
+
+def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    """관리자 전용 엔드포인트에 사용하는 의존성입니다."""
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
 
 class PasswordAuthMiddleware(BaseHTTPMiddleware):
     """

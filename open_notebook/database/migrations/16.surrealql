@@ -1,0 +1,9 @@
+-- Migration 16: Add owner field to notebook, source, note
+
+DEFINE FIELD IF NOT EXISTS owner ON TABLE notebook TYPE option<record<user>>;
+DEFINE FIELD IF NOT EXISTS owner ON TABLE source   TYPE option<record<user>>;
+DEFINE FIELD IF NOT EXISTS owner ON TABLE note     TYPE option<record<user>>;
+
+DEFINE INDEX IF NOT EXISTS idx_notebook_owner ON TABLE notebook FIELDS owner;
+DEFINE INDEX IF NOT EXISTS idx_source_owner   ON TABLE source   FIELDS owner;
+DEFINE INDEX IF NOT EXISTS idx_note_owner     ON TABLE note     FIELDS owner;

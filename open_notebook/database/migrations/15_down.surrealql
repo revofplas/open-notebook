@@ -1,0 +1,3 @@
+-- Migration 15 down: Remove user accounts and audit log
+REMOVE TABLE IF EXISTS audit_log;
+REMOVE TABLE IF EXISTS user;

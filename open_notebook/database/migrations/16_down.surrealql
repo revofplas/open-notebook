@@ -1,0 +1,8 @@
+-- Migration 16 down: Remove owner field from notebook, source, note
+REMOVE INDEX IF EXISTS idx_notebook_owner ON TABLE notebook;
+REMOVE INDEX IF EXISTS idx_source_owner   ON TABLE source;
+REMOVE INDEX IF EXISTS idx_note_owner     ON TABLE note;
+
+REMOVE FIELD IF EXISTS owner ON TABLE notebook;
+REMOVE FIELD IF EXISTS owner ON TABLE source;
+REMOVE FIELD IF EXISTS owner ON TABLE note;
