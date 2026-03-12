@@ -11,7 +11,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
 ]
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn>=0.24.0",
@@ -42,9 +42,9 @@ dependencies = [
     "pycountry>=26.2.16",
     "babel>=2.18.0",
     # Custom auth dependencies
-    "python-oracledb>=2.0.0",
+    "oracledb>=2.0.0",
     "python-jose[cryptography]>=3.3.0",
-    "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=4.0.0",
 ]
 
 [tool.setuptools]

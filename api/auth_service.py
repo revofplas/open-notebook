@@ -11,16 +11,26 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import bcrypt
 from jose import JWTError, jwt
 from loguru import logger
-from passlib.context import CryptContext
 
 from api.oracle_client import fetch_employee_by_user_id
 from open_notebook.database.repository import repo_query
 from open_notebook.domain.user import User
 
-# ── bcrypt for system admin accounts ──────────────────────────────────────────
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# ── bcrypt helpers (bcrypt 직접 사용 — passlib 1.7.x 는 bcrypt 4+와 비호환) ──
+def _hash_password(plain: str) -> str:
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
+
+
+def _verify_password(plain: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except Exception as e:
+        logger.error(f"bcrypt verify error: {type(e).__name__}: {e}")
+        return False
 
 # ── JWT settings ──────────────────────────────────────────────────────────────
 JWT_SECRET_KEY: str = os.getenv(
@@ -87,20 +97,26 @@ def verify_oracle_password(plain_password: str, stored_hash: str) -> bool:
 async def authenticate_user(user_id: str, password: str) -> Optional[User]:
     """
     인증 흐름:
-      1. SurrealDB에서 system admin 계정 확인 (bcrypt)
-      2. Oracle HR 연동 (커스텀 SHA-512)
+      1. DB에서 로컬(system) 계정 여부 먼저 확인
+         → 로컬 계정이면 bcrypt 검증만 수행; Oracle 시도 안 함
+      2. 로컬 계정이 아닌 경우에만 Oracle HR 연동 (커스텀 SHA-512)
     성공 시 User 반환, 실패 시 None 반환.
     """
-    # 1. System admin 우선 확인
-    admin = await _find_system_admin(user_id)
-    if admin:
-        if _pwd_context.verify(password, admin.hashed_pw or ""):
+    # 1. 로컬(system) 계정 확인 — 로컬이면 Oracle 절대 시도 안 함
+    try:
+        admin = await _find_system_admin(user_id)
+    except Exception as e:
+        logger.error(f"System admin lookup error for {user_id}: {e}")
+        raise
+
+    if admin is not None:
+        if _verify_password(password, admin.hashed_pw or ""):
             await _touch_last_login(admin.id)
             return admin
         logger.warning(f"Admin login failed: user_id={user_id}")
         return None
 
-    # 2. Oracle HR 검증
+    # 2. Oracle HR 검증 (로컬 계정이 아닌 경우에만)
     try:
         emp = await fetch_employee_by_user_id(user_id)
     except NotImplementedError:
@@ -126,15 +142,15 @@ async def authenticate_user(user_id: str, password: str) -> Optional[User]:
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
 async def _find_system_admin(user_id: str) -> Optional[User]:
-    try:
-        rows = await repo_query(
-            "SELECT * FROM user WHERE user_id = $uid AND source = 'system' LIMIT 1",
-            {"uid": user_id},
-        )
-        return User(**rows[0]) if rows else None
-    except Exception as e:
-        logger.error(f"System admin lookup error for {user_id}: {e}")
-        return None
+    """
+    DB에서 source='system' 인 로컬 계정을 조회합니다.
+    사용자가 없으면 None, DB 오류 시 예외를 전파합니다.
+    """
+    rows = await repo_query(
+        "SELECT * FROM user WHERE user_id = $uid AND source = 'system' LIMIT 1",
+        {"uid": user_id},
+    )
+    return User(**rows[0]) if rows else None
 
 
 async def _upsert_oracle_user(emp: dict) -> User:
@@ -196,7 +212,7 @@ async def create_system_admin(
     시스템 독자 관리자 계정을 생성합니다.
     API 서버 최초 기동 시 또는 별도 관리 CLI에서 호출합니다.
     """
-    hashed = _pwd_context.hash(plain_password)
+    hashed = _hash_password(plain_password)
     rows = await repo_query(
         "CREATE user CONTENT $data RETURN AFTER",
         {
