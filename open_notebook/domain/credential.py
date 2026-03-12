@@ -132,16 +132,21 @@ class Credential(ObjectModel):
     async def get_all(cls, order_by=None) -> List["Credential"]:
         """Override get_all() to handle api_key decryption."""
         instances = await super().get_all(order_by=order_by)
+        valid = []
         for instance in instances:
-            if instance.api_key:
-                raw = (
-                    instance.api_key.get_secret_value()
-                    if isinstance(instance.api_key, SecretStr)
-                    else instance.api_key
-                )
-                decrypted = decrypt_value(raw)
-                object.__setattr__(instance, "api_key", SecretStr(decrypted))
-        return instances
+            try:
+                if instance.api_key:
+                    raw = (
+                        instance.api_key.get_secret_value()
+                        if isinstance(instance.api_key, SecretStr)
+                        else instance.api_key
+                    )
+                    decrypted = decrypt_value(raw)
+                    object.__setattr__(instance, "api_key", SecretStr(decrypted))
+                valid.append(instance)
+            except Exception as e:
+                logger.warning(f"Skipping invalid credential (decryption failed): {e}")
+        return valid
 
     async def get_linked_models(self) -> list:
         """Get all models linked to this credential."""

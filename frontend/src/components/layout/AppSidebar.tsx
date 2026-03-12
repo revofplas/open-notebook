@@ -68,10 +68,8 @@ const getNavigation = (t: TranslationKeys) => [
   {
     title: t.navigation.manage,
     items: [
-      { name: t.navigation.models, href: '/settings/api-keys', icon: Bot },
       { name: t.navigation.transformations, href: '/transformations', icon: Shuffle },
       { name: t.navigation.settings, href: '/settings', icon: Settings },
-      { name: t.navigation.advanced, href: '/advanced', icon: Wrench },
     ],
   },
 ] as const
@@ -305,38 +303,39 @@ export function AppSidebar() {
                     {t.navigation.admin}
                   </h3>
                 )}
-                {isCollapsed ? (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Link href="/admin/oracle-settings">
-                        <Button
-                          variant={pathname?.startsWith('/admin/oracle-settings') ? 'secondary' : 'ghost'}
-                          className={cn(
-                            'w-full gap-3 text-sidebar-foreground sidebar-menu-item',
-                            pathname?.startsWith('/admin/oracle-settings') && 'bg-sidebar-accent text-sidebar-accent-foreground',
-                            'justify-center px-2'
-                          )}
-                        >
-                          <ShieldCheck className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">{t.navigation.oracleSettings}</TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <Link href="/admin/oracle-settings">
+                {[
+                  { name: t.navigation.models, href: '/settings/api-keys', icon: Bot },
+                  { name: t.navigation.advanced, href: '/advanced', icon: Wrench },
+                  { name: t.navigation.oracleSettings, href: '/admin/oracle-settings', icon: ShieldCheck },
+                ].map((item) => {
+                  const isActive = pathname?.startsWith(item.href) || false
+                  const button = (
                     <Button
-                      variant={pathname?.startsWith('/admin/oracle-settings') ? 'secondary' : 'ghost'}
+                      variant={isActive ? 'secondary' : 'ghost'}
                       className={cn(
-                        'w-full gap-3 text-sidebar-foreground sidebar-menu-item justify-start',
-                        pathname?.startsWith('/admin/oracle-settings') && 'bg-sidebar-accent text-sidebar-accent-foreground',
+                        'w-full gap-3 text-sidebar-foreground sidebar-menu-item',
+                        isActive && 'bg-sidebar-accent text-sidebar-accent-foreground',
+                        isCollapsed ? 'justify-center px-2' : 'justify-start'
                       )}
                     >
-                      <ShieldCheck className="h-4 w-4" />
-                      <span>{t.navigation.oracleSettings}</span>
+                      <item.icon className="h-4 w-4" />
+                      {!isCollapsed && <span>{item.name}</span>}
                     </Button>
-                  </Link>
-                )}
+                  )
+                  if (isCollapsed) {
+                    return (
+                      <Tooltip key={item.href}>
+                        <TooltipTrigger asChild>
+                          <Link href={item.href}>{button}</Link>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">{item.name}</TooltipContent>
+                      </Tooltip>
+                    )
+                  }
+                  return (
+                    <Link key={item.href} href={item.href}>{button}</Link>
+                  )
+                })}
               </div>
             </div>
           )}

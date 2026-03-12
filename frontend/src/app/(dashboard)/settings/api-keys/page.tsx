@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useEffect, useId } from 'react'
 import { useForm } from 'react-hook-form'
+import { useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/AppShell'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
@@ -38,6 +39,7 @@ import {
   Bot,
 } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useAuthStore } from '@/lib/stores/auth-store'
 import { useModels, useDeleteModel, useModelDefaults, useUpdateModelDefaults, useAutoAssignDefaults, useTestModel } from '@/lib/hooks/use-models'
 import {
   useCredentials,
@@ -1270,6 +1272,16 @@ function DefaultModelSelectors({
 
 export default function ApiKeysPage() {
   const { t } = useTranslation()
+  const router = useRouter()
+  const { user } = useAuthStore()
+
+  useEffect(() => {
+    if (user && user.role !== 'admin') {
+      router.replace('/notebooks')
+    }
+  }, [user, router])
+
+  if (!user || user.role !== 'admin') return null
 
   // Data
   const { data: credentials, isLoading: credentialsLoading } = useCredentials()
