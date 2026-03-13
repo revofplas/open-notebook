@@ -129,8 +129,9 @@ async def get_note(
         note = await Note.get(note_id)
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
-        if note.owner and str(note.owner) != current_user["uid"]:
-            raise HTTPException(status_code=403, detail="Access denied")
+        if current_user.get("role") != "admin":
+            if not note.owner or str(note.owner) != current_user["uid"]:
+                raise HTTPException(status_code=403, detail="Access denied")
         return NoteResponse(
             id=note.id or "",
             title=note.title,
@@ -196,8 +197,9 @@ async def delete_note(
         note = await Note.get(note_id)
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
-        if note.owner and str(note.owner) != current_user["uid"]:
-            raise HTTPException(status_code=403, detail="Access denied")
+        if current_user.get("role") != "admin":
+            if not note.owner or str(note.owner) != current_user["uid"]:
+                raise HTTPException(status_code=403, detail="Access denied")
         await note.delete()
         return {"message": "Note deleted successfully"}
     except HTTPException:

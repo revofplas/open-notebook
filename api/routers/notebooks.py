@@ -150,8 +150,9 @@ async def get_notebook(
 
         nb = result[0]
         owner = nb.get("owner")
-        if owner and str(owner) != current_user["uid"]:
-            raise HTTPException(status_code=403, detail="Access denied")
+        if current_user.get("role") != "admin":
+            if not owner or str(owner) != current_user["uid"]:
+                raise HTTPException(status_code=403, detail="Access denied")
 
         return NotebookResponse(
             id=str(nb.get("id", "")),
@@ -180,8 +181,9 @@ async def update_notebook(
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
-        if notebook.owner and str(notebook.owner) != current_user["uid"]:
-            raise HTTPException(status_code=403, detail="Access denied")
+        if current_user.get("role") != "admin":
+            if not notebook.owner or str(notebook.owner) != current_user["uid"]:
+                raise HTTPException(status_code=403, detail="Access denied")
 
         if notebook_update.name is not None:
             notebook.name = notebook_update.name
@@ -310,8 +312,9 @@ async def delete_notebook(
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
-        if notebook.owner and str(notebook.owner) != current_user["uid"]:
-            raise HTTPException(status_code=403, detail="Access denied")
+        if current_user.get("role") != "admin":
+            if not notebook.owner or str(notebook.owner) != current_user["uid"]:
+                raise HTTPException(status_code=403, detail="Access denied")
 
         result = await notebook.delete(delete_exclusive_sources=delete_exclusive_sources)
 
