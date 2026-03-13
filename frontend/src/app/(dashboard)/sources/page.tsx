@@ -23,6 +23,7 @@ export default function SourcesPage() {
   const [sources, setSources] = useState<SourceListResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [sortBy, setSortBy] = useState<'created' | 'updated'>('updated')
@@ -51,6 +52,7 @@ export default function SourcesPage() {
         offsetRef.current = 0
         setSources([])
         hasMoreRef.current = true
+        setHasMore(true)
       } else {
         loadingMoreRef.current = true
         setLoadingMore(true)
@@ -72,6 +74,7 @@ export default function SourcesPage() {
       // Check if we have more data
       const hasMoreData = data.length === PAGE_SIZE
       hasMoreRef.current = hasMoreData
+      setHasMore(hasMoreData)
       offsetRef.current += data.length
     } catch (err) {
       console.error('Failed to fetch sources:', err)
@@ -411,6 +414,20 @@ export default function SourcesPage() {
                       <LoadingSpinner />
                       <span className="ml-2 text-muted-foreground">{t.sources.loadingMore}</span>
                     </div>
+                  </td>
+                </tr>
+              )}
+              {!loadingMore && hasMore && (
+                <tr>
+                  <td colSpan={6} className="h-14 text-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => fetchSources(false)}
+                      className="text-muted-foreground"
+                    >
+                      {t.sources.loadMore}
+                    </Button>
                   </td>
                 </tr>
               )}
