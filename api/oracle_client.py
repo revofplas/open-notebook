@@ -27,6 +27,14 @@ async def _get_oracle_config_from_db() -> Optional[dict]:
     return None
 
 
+async def get_user_view_name() -> str:
+    """Return the configured HR user view name (DB > env var > default)."""
+    db_config = await _get_oracle_config_from_db()
+    if db_config and db_config.get("user_view"):
+        return db_config["user_view"]
+    return os.getenv("ORACLE_USER_VIEW", "INF.VI_INF_USER_INFO")
+
+
 async def get_pool() -> oracledb.AsyncConnectionPool:
     global _pool
     if _pool is not None:
@@ -56,7 +64,7 @@ async def get_pool() -> oracledb.AsyncConnectionPool:
         )
 
     logger.info(f"Creating Oracle connection pool: dsn={dsn}, user={user}")
-    _pool = await oracledb.create_pool_async(
+    _pool = oracledb.create_pool_async(
         user=user,
         password=password,
         dsn=dsn,
@@ -82,16 +90,17 @@ async def reset_pool() -> None:
 
 
 async def fetch_employee_by_user_id(user_id: str) -> Optional[dict]:
-    """INF.VI_INF_EMP_INFO 에서 USER_ID 기준으로 재직 중인 직원 조회."""
+    """HR user view 에서 USER_ID 기준으로 재직 중인 직원 조회."""
+    view_name = await get_user_view_name()
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                """
+                f"""
                 SELECT EMP_NO, EMP_NM, USER_ID, PWD,
                        DEPT_CD, DEPT_NM, EMAIL,
                        GRD_NM, JOB_TP_NM, USE_YN, HOLD_OFFI
-                FROM   INF.VI_INF_EMP_INFO
+                FROM   {view_name}
                 WHERE  USER_ID = :user_id
                 AND    USE_YN  = 'Y'
                 """,

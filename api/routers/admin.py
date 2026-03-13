@@ -20,6 +20,7 @@ class OracleConfigResponse(BaseModel):
     pool_min: int
     pool_max: int
     enabled: bool
+    user_view: str
     # password is NEVER returned to the frontend
 
 
@@ -30,6 +31,7 @@ class OracleConfigUpdate(BaseModel):
     pool_min: Optional[int] = None
     pool_max: Optional[int] = None
     enabled: Optional[bool] = None
+    user_view: Optional[str] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -50,6 +52,7 @@ async def get_oracle_config(
             pool_min=int(cfg.get("pool_min", 2)),
             pool_max=int(cfg.get("pool_max", 10)),
             enabled=bool(cfg.get("enabled", False)),
+            user_view=cfg.get("user_view", "INF.VI_INF_USER_INFO"),
         )
     except HTTPException:
         raise
@@ -79,11 +82,13 @@ async def update_oracle_config(
             update_data["pool_max"] = config.pool_max
         if config.enabled is not None:
             update_data["enabled"] = config.enabled
+        if config.user_view is not None:
+            update_data["user_view"] = config.user_view
 
         if not update_data:
             raise HTTPException(status_code=400, detail="No fields to update")
 
-        await repo_upsert("oracle_config", "default", update_data, add_timestamp=True)
+        await repo_upsert("oracle_config", "oracle_config:default", update_data, add_timestamp=True)
 
         # Reset Oracle connection pool so it picks up new config on next use
         try:
@@ -101,6 +106,7 @@ async def update_oracle_config(
             pool_min=int(cfg.get("pool_min", 2)),
             pool_max=int(cfg.get("pool_max", 10)),
             enabled=bool(cfg.get("enabled", False)),
+            user_view=cfg.get("user_view", "INF.VI_INF_USER_INFO"),
         )
     except HTTPException:
         raise

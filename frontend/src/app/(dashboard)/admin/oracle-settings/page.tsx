@@ -20,6 +20,7 @@ interface OracleConfig {
   pool_min: number
   pool_max: number
   enabled: boolean
+  user_view: string
 }
 
 export default function OracleSettingsPage() {
@@ -32,6 +33,7 @@ export default function OracleSettingsPage() {
     pool_min: 2,
     pool_max: 10,
     enabled: false,
+    user_view: 'INF.VI_INF_USER_INFO',
   })
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -74,6 +76,7 @@ export default function OracleSettingsPage() {
         pool_min: config.pool_min,
         pool_max: config.pool_max,
         enabled: config.enabled,
+        user_view: config.user_view,
       }
       if (password.trim()) {
         payload.password = password
@@ -211,6 +214,17 @@ export default function OracleSettingsPage() {
                       onChange={(e) => setConfig(prev => ({ ...prev, pool_max: Number(e.target.value) }))}
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="user_view">{t.admin.oracleSettings.userViewLabel} <span className="text-red-500">*</span></Label>
+                  <Input
+                    id="user_view"
+                    value={config.user_view}
+                    onChange={(e) => setConfig(prev => ({ ...prev, user_view: e.target.value }))}
+                    placeholder="SCHEMA.VIEW_NAME (예: INF.VI_INF_USER_INFO)"
+                  />
+                  <p className="text-xs text-muted-foreground">{t.admin.oracleSettings.userViewDesc}</p>
                 </div>
 
                 {testResult && (
