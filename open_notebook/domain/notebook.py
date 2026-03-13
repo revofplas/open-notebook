@@ -27,6 +27,12 @@ class Notebook(ObjectModel):
             raise InvalidInputError("Notebook name cannot be empty")
         return v
 
+    def _prepare_save_data(self) -> dict:
+        data = super()._prepare_save_data()
+        if data.get("owner") is not None:
+            data["owner"] = ensure_record_id(data["owner"])
+        return data
+
     async def get_sources(self) -> List["Source"]:
         try:
             srcs = await repo_query(
@@ -506,12 +512,16 @@ class Source(ObjectModel):
             return None
 
     def _prepare_save_data(self) -> dict:
-        """Override to ensure command field is always RecordID format for database"""
+        """Override to ensure command and owner fields are always RecordID format for database"""
         data = super()._prepare_save_data()
 
         # Ensure command field is RecordID format if not None
         if data.get("command") is not None:
             data["command"] = ensure_record_id(data["command"])
+
+        # Ensure owner field is RecordID format if not None
+        if data.get("owner") is not None:
+            data["owner"] = ensure_record_id(data["owner"])
 
         return data
 
@@ -569,6 +579,12 @@ class Note(ObjectModel):
         if v is not None and not v.strip():
             raise InvalidInputError("Note content cannot be empty")
         return v
+
+    def _prepare_save_data(self) -> dict:
+        data = super()._prepare_save_data()
+        if data.get("owner") is not None:
+            data["owner"] = ensure_record_id(data["owner"])
+        return data
 
     async def save(self) -> Optional[str]:
         """
