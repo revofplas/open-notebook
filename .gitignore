@@ -1,5 +1,6 @@
 .env
 prompts/patterns/user/
+docs/99-KIMM-CUSTOMIZATION/
 /notebooks/
 data/
 .uploads/
@@ -141,3 +142,5 @@ specs/
 **/*.local.md
 /.agents/
 /skills-lock.json
+/_test_oracle.py
+/_test_suites.py

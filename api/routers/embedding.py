@@ -81,6 +81,12 @@ async def embed_content(embed_request: EmbedRequest):
                 if not source_item:
                     raise HTTPException(status_code=404, detail="Source not found")
 
+                if not source_item.full_text or not source_item.full_text.strip():
+                    raise HTTPException(
+                        status_code=422,
+                        detail="Source has no text content yet. If you just uploaded a file, please wait for processing to complete before embedding.",
+                    )
+
                 # Submit embed_source job (returns command_id for tracking)
                 command_id = await source_item.vectorize()
                 message = "Source embedding job submitted"
