@@ -16,7 +16,7 @@ from jose import JWTError, jwt
 from loguru import logger
 
 from api.oracle_client import fetch_employee_by_user_id
-from open_notebook.database.repository import repo_query
+from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.user import User
 
 
@@ -179,7 +179,7 @@ async def _upsert_oracle_user(emp: dict) -> User:
     if existing:
         rows = await repo_query(
             "UPDATE $id MERGE $data RETURN AFTER",
-            {"id": existing[0]["id"], "data": data},
+            {"id": ensure_record_id(str(existing[0]["id"])), "data": data},
         )
     else:
         rows = await repo_query(
