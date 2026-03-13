@@ -28,12 +28,17 @@ async def get_notebooks(
     """Get notebooks owned by the current user."""
     try:
         owner_id = ensure_record_id(current_user["uid"])
+        is_admin = current_user.get("role") == "admin"
+        if is_admin:
+            where_clause = "WHERE owner = $owner OR owner IS NONE"
+        else:
+            where_clause = "WHERE owner = $owner"
         query = f"""
             SELECT *,
             count(<-reference.in) as source_count,
             count(<-artifact.in) as note_count
             FROM notebook
-            WHERE owner = $owner OR owner IS NONE
+            {where_clause}
             ORDER BY {order_by}
         """
         result = await repo_query(query, {"owner": owner_id})
@@ -144,6 +149,10 @@ async def get_notebook(
             raise HTTPException(status_code=404, detail="Notebook not found")
 
         nb = result[0]
+        owner = nb.get("owner")
+        if owner and str(owner) != current_user["uid"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+
         return NotebookResponse(
             id=str(nb.get("id", "")),
             name=nb.get("name", ""),
@@ -171,6 +180,8 @@ async def update_notebook(
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
+        if notebook.owner and str(notebook.owner) != current_user["uid"]:
+            raise HTTPException(status_code=403, detail="Access denied")
 
         if notebook_update.name is not None:
             notebook.name = notebook_update.name
@@ -299,6 +310,8 @@ async def delete_notebook(
         notebook = await Notebook.get(notebook_id)
         if not notebook:
             raise HTTPException(status_code=404, detail="Notebook not found")
+        if notebook.owner and str(notebook.owner) != current_user["uid"]:
+            raise HTTPException(status_code=403, detail="Access denied")
 
         result = await notebook.delete(delete_exclusive_sources=delete_exclusive_sources)
 

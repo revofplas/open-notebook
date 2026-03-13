@@ -20,6 +20,9 @@ async def get_notes(
     """Get notes owned by the current user, optionally filtered by notebook."""
     try:
         owner_id = ensure_record_id(current_user["uid"])
+        is_admin = current_user.get("role") == "admin"
+        owner_filter = "in.owner = $owner OR in.owner IS NONE" if is_admin else "in.owner = $owner"
+        note_filter = "owner = $owner OR owner IS NONE" if is_admin else "owner = $owner"
 
         if notebook_id:
             from open_notebook.domain.notebook import Notebook
@@ -28,18 +31,18 @@ async def get_notes(
                 raise HTTPException(status_code=404, detail="Notebook not found")
 
             rows = await repo_query(
-                """
-                SELECT in.* as note FROM artifact
-                WHERE out = $nb_id AND (in.owner = $owner OR in.owner IS NONE)
+                f"""
+                SELECT in.updated as note_updated, in.* as note FROM artifact
+                WHERE out = $nb_id AND ({owner_filter})
+                ORDER BY note_updated DESC
                 FETCH in
-                ORDER BY in.updated DESC
                 """,
                 {"nb_id": ensure_record_id(notebook_id), "owner": owner_id},
             )
             notes = [Note(**r["note"]) for r in rows if r.get("note")] if rows else []
         else:
             rows = await repo_query(
-                "SELECT * FROM note WHERE owner = $owner OR owner IS NONE ORDER BY updated DESC",
+                f"SELECT * FROM note WHERE {note_filter} ORDER BY updated DESC",
                 {"owner": owner_id},
             )
             notes = [Note(**r) for r in rows] if rows else []
@@ -126,6 +129,8 @@ async def get_note(
         note = await Note.get(note_id)
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
+        if note.owner and str(note.owner) != current_user["uid"]:
+            raise HTTPException(status_code=403, detail="Access denied")
         return NoteResponse(
             id=note.id or "",
             title=note.title,
@@ -191,6 +196,8 @@ async def delete_note(
         note = await Note.get(note_id)
         if not note:
             raise HTTPException(status_code=404, detail="Note not found")
+        if note.owner and str(note.owner) != current_user["uid"]:
+            raise HTTPException(status_code=403, detail="Access denied")
         await note.delete()
         return {"message": "Note deleted successfully"}
     except HTTPException:

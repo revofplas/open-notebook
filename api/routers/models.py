@@ -3,10 +3,11 @@ import traceback
 from typing import Dict, List, Optional
 
 from esperanto import AIFactory
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from pydantic import BaseModel
 
+from api.auth import require_admin
 from api.models import (
     DefaultModelsResponse,
     ModelCreate,
@@ -309,7 +310,7 @@ async def get_default_models():
 
 
 @router.put("/models/defaults", response_model=DefaultModelsResponse)
-async def update_default_models(defaults_data: DefaultModelsResponse):
+async def update_default_models(defaults_data: DefaultModelsResponse, _admin: dict = Depends(require_admin)):
     """Update default model assignments."""
     try:
         defaults = await DefaultModels.get_instance()

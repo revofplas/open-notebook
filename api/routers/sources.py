@@ -167,6 +167,9 @@ async def get_sources(
     """Get sources with pagination and sorting support."""
     try:
         owner_id = ensure_record_id(current_user["uid"])
+        is_admin = current_user.get("role") == "admin"
+        nb_owner_filter = "in.owner = $owner OR in.owner IS NONE" if is_admin else "in.owner = $owner"
+        src_owner_filter = "owner = $owner OR owner IS NONE" if is_admin else "owner = $owner"
 
         # Validate sort parameters
         if sort_by not in ["created", "updated"]:
@@ -193,7 +196,7 @@ async def get_sources(
                 SELECT id, asset, created, title, updated, topics, command,
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
-                FROM (select value in from reference where out=$notebook_id AND (in.owner = $owner OR in.owner IS NONE))
+                FROM (select value in from reference where out=$notebook_id AND ({nb_owner_filter}))
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command
@@ -214,7 +217,7 @@ async def get_sources(
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM source
-                WHERE owner = $owner OR owner IS NONE
+                WHERE {src_owner_filter}
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command
