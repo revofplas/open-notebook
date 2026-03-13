@@ -20,6 +20,19 @@ import { getApiErrorKey } from '@/lib/utils/error-handler'
 
 export default function SourcesPage() {
   const { t, language } = useTranslation()
+
+  // Cache translation strings to avoid O(n) proxy accesses inside sources.map()
+  const typeLink = t.sources.type.link as string
+  const typeFile = t.sources.type.file as string
+  const typeText = t.sources.type.text as string
+  const labelYes = t.sources.yes as string
+  const labelNo = t.sources.no as string
+  const labelUntitled = t.sources.untitledSource as string
+  const labelLoadMore = t.sources.loadMore as string
+  const labelLoadingMore = t.sources.loadingMore as string
+  const labelInsights = t.sources.insights as string
+  const labelEmbedded = t.sources.embedded as string
+
   const [sources, setSources] = useState<SourceListResponse[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -223,9 +236,9 @@ export default function SourcesPage() {
   }
 
   const getSourceType = (source: SourceListResponse) => {
-    if (source.asset?.url) return t.sources.type.link
-    if (source.asset?.file_path) return t.sources.type.file
-    return t.sources.type.text
+    if (source.asset?.url) return typeLink
+    if (source.asset?.file_path) return typeFile
+    return typeText
   }
 
   const handleRowClick = useCallback((index: number, sourceId: string) => {
@@ -338,10 +351,10 @@ export default function SourcesPage() {
                   </Button>
                 </th>
                 <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground hidden md:table-cell">
-                  {t.sources.insights}
+                  {labelInsights}
                 </th>
                 <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground hidden lg:table-cell">
-                  {t.sources.embedded}
+                  {labelEmbedded}
                 </th>
                 <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">
                   {t.common.actions}
@@ -372,7 +385,7 @@ export default function SourcesPage() {
                   <td className="h-12 px-4">
                     <div className="flex flex-col overflow-hidden">
                       <span className="font-medium truncate">
-                        {source.title || t.sources.untitledSource}
+                        {source.title || labelUntitled}
                       </span>
                       {source.asset?.url && (
                         <span className="text-xs text-muted-foreground truncate">
@@ -392,7 +405,7 @@ export default function SourcesPage() {
                   </td>
                   <td className="h-12 px-4 text-center hidden lg:table-cell">
                     <Badge variant={source.embedded ? "default" : "secondary"} className="text-xs">
-                      {source.embedded ? t.sources.yes : t.sources.no}
+                      {source.embedded ? labelYes : labelNo}
                     </Badge>
                   </td>
                   <td className="h-12 px-4 text-right">
@@ -412,7 +425,7 @@ export default function SourcesPage() {
                   <td colSpan={6} className="h-16 text-center">
                     <div className="flex items-center justify-center">
                       <LoadingSpinner />
-                      <span className="ml-2 text-muted-foreground">{t.sources.loadingMore}</span>
+                      <span className="ml-2 text-muted-foreground">{labelLoadingMore}</span>
                     </div>
                   </td>
                 </tr>
@@ -426,7 +439,7 @@ export default function SourcesPage() {
                       onClick={() => fetchSources(false)}
                       className="text-muted-foreground"
                     >
-                      {t.sources.loadMore}
+                      {labelLoadMore}
                     </Button>
                   </td>
                 </tr>
